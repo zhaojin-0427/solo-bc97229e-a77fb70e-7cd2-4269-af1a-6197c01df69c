@@ -30,5 +30,14 @@ OPERATION_TIMEOUT_MS = int(_env("OPERATION_TIMEOUT_MS", "30000"))
 DOWNLOAD_TICK_SECONDS = float(_env("DOWNLOAD_TICK_SECONDS", "0.25"))
 NAV_TIMEOUT_MS = int(_env("NAV_TIMEOUT_MS", "15000"))
 
-# 质量库 CSV 表头
-CSV_HEADER = ["产线", "日期", "样品号", "测量值"]
+# 质量库 CSV 表头（单一事实来源在 validation.CSV_HEADER，这里再导出保持兼容）
+from .validation import CSV_HEADER  # noqa: E402
+
+# 质量库接收服务（投递目标）
+QUALITYDB_URL = _env("QUALITYDB_URL", "http://qualitydb:8100")
+# 投递 HTTP 超时：网络等待发生在独立投递线程，绝不占任务库锁/门户会话
+DELIVERY_TIMEOUT_SECONDS = float(_env("DELIVERY_TIMEOUT_SECONDS", "10"))
+# 投递重试的初始与最大退避（秒），失败后指数退避
+DELIVERY_BACKOFF_MIN = float(_env("DELIVERY_BACKOFF_MIN", "2"))
+DELIVERY_BACKOFF_MAX = float(_env("DELIVERY_BACKOFF_MAX", "30"))
+DELIVERY_DB_PATH = DATA_DIR / "deliveries.db"

@@ -1,11 +1,16 @@
-"""发布前校验：CSV 中每条记录的产线、日期都必须与任务请求吻合。"""
+"""发布前校验：CSV 中每条记录的产线、日期都必须与任务请求吻合。
+
+本模块刻意保持零内部依赖（不 import config），这样质量库接收服务
+（qualitydb 容器）可以原样复制同一份文件，保证两端校验规则完全一致。
+"""
 from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import config
+# 质量库 CSV 表头（单一事实来源，config.CSV_HEADER 由此再导出）。
+CSV_HEADER = ["产线", "日期", "样品号", "测量值"]
 
 
 @dataclass
@@ -33,9 +38,9 @@ def validate_csv(path: str | Path, expected_line: str, expected_date: str) -> Va
                 header = next(reader)
             except StopIteration:
                 return ValidationResult(False, 0, "CSV 为空，缺少表头")
-            if [h.strip() for h in header] != config.CSV_HEADER:
+            if [h.strip() for h in header] != CSV_HEADER:
                 return ValidationResult(
-                    False, 0, f"表头不匹配：实际 {header}，期望 {config.CSV_HEADER}"
+                    False, 0, f"表头不匹配：实际 {header}，期望 {CSV_HEADER}"
                 )
             row_count = 0
             for index, row in enumerate(reader, start=2):  # 行号含表头

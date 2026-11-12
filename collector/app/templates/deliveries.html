@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>质量库投递 · 质检数据采集服务</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+           background: #f3f4f6; color: #1f2937; }
+    header { background: #0f766e; color: #fff; padding: 16px 32px; }
+    header h1 { margin: 0; font-size: 19px; }
+    header p { margin: 4px 0 0; font-size: 13px; color: #ccfbf1; }
+    header a { color: #a7f3d0; }
+    main { max-width: 1180px; margin: 26px auto; }
+    .card { background: #fff; border-radius: 10px; padding: 22px 26px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 22px; }
+    h2 { font-size: 16px; margin: 0 0 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 9px 8px; text-align: left;
+             vertical-align: top; }
+    th { background: #f9fafb; font-weight: 600; }
+    .status { display: inline-block; padding: 2px 10px; border-radius: 999px;
+              font-size: 12px; white-space: nowrap; }
+    .s-pending { background: #ffedd5; color: #9a3412; }
+    .s-confirmed { background: #dcfce7; color: #166534; }
+    .s-rejected { background: #fee2e2; color: #991b1b; }
+    .s-none { background: #f3f4f6; color: #6b7280; }
+    .msg { color: #6b7280; font-size: 12px; margin-top: 3px; max-width: 300px;
+           word-break: break-all; }
+    .mono { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+    button { border: 0; border-radius: 6px; padding: 8px 16px; font-size: 13px;
+             cursor: pointer; }
+    .btn-primary { background: #0f766e; color: #fff; }
+    .btn-gray { background: #4b5563; color: #fff; }
+    .hint { font-size: 12px; color: #6b7280; margin-top: 10px; line-height: 1.7; }
+    .detail { margin-top: 8px; background: #f9fafb; border-radius: 8px; padding: 10px; }
+    .detail table { font-size: 12px; }
+    .detail th, .detail td { padding: 5px 8px; }
+    .tabs a { margin-right: 16px; font-size: 13px; }
+    form { display: inline; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>质量库投递</h1>
+    <p>选择已发布任务后台投递；重复或并发点击复用同一条投递。仅收到任务号、
+       文件 SHA-256、记录数全吻合的回执才报投递成功。
+       质量库控制台：<a href="{{ qualitydb_url }}/admin" target="_blank">{{ qualitydb_url }}/admin</a></p>
+  </header>
+  <main>
+    <section class="card">
+      <div class="tabs">
+        <a href="/">← 采集任务</a>
+        <strong>质量库投递</strong>
+      </div>
+      <p class="hint">
+        投递在独立后台线程进行，网络等待不占用任务库锁或门户会话，采集、查询、下载照常可用。
+        响应丢失时投递保持「待确认」，用原任务、原文件自动重试；接收端按任务号幂等，
+        同字节回放原回执、异字节拒绝，因此不漏投也不重复入库。
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>投递状态（每 3 秒自动刷新待确认项）</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>任务</th><th>产线/日期</th><th>发布文件</th>
+            <th>记录数 / SHA-256</th><th>投递状态</th><th>尝试/回执</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in tasks if t.status == 'published' %}
+          {% set d = deliveries.get(t.id) %}
+          <tr>
+            <td class="mono">{{ t.id[:8] }}</td>
+            <td>{{ t.line }}<div class="msg">{{ t.date }}</div></td>
+            <td class="mono" style="max-width:180px">{{ t.published_file }}</td>
+            <td>
+              {% if d %}
+                {{ d.record_count }} 条
+                <div class="mono msg">{{ d.file_sha256[:16] }}…</div>
+              {% else %}
+                <span class="msg">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if d %}
+                <span class="status s-{{ d.status }}">{{ labels[d.status] }}</span>
+                <div class="msg">
+                  {% if d.status == 'pending' and d.last_error %}
+                    最近错误：{{ d.last_error }}
+                  {% elif d.status == 'rejected' %}
+                    拒绝原因：{{ d.last_error }}
+                  {% elif d.status == 'confirmed' %}
+                    回执三要素吻合，投递成功
+                  {% else %}
+                    等待后台投递/确认…
+                  {% endif %}
+                </div>
+              {% else %}
+                <span class="status s-none">未投递</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if d %}
+                {{ d.attempts }} 次
+                {% if d.receipt_id %}<div class="mono msg">{{ d.receipt_id[:12] }}</div>{% endif %}
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if not d %}
+              <form method="post" action="/api/tasks/{{ t.id }}/deliver">
+                <input type="hidden" name="html" value="1">
+                <button class="btn-primary" type="submit">投递到质量库</button>
+              </form>
+              {% elif d.status == 'rejected' %}
+              <form method="post" action="/api/tasks/{{ t.id }}/deliver">
+                <input type="hidden" name="html" value="1">
+                <button class="btn-gray" type="submit">重新发起</button>
+              </form>
+              {% elif d.status == 'pending' %}
+              <span class="msg">后台自动重试中</span>
+              {% else %}
+              <span class="msg">已确认</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% if d and quality.get(t.id) %}
+          <tr>
+            <td colspan="7">
+              <div class="detail">
+                <strong style="font-size:12px">质量库明细（任务 {{ t.id[:8] }}，
+                  共 {{ quality[t.id].delivery.record_count }} 条，
+                  入库 {{ quality[t.id].delivery.created_at.replace('T',' ').replace('+00:00',' UTC') }}）
+                </strong>
+                <table>
+                  <thead>
+                    <tr><th>原记录序号</th><th>产线</th><th>日期</th><th>样品号</th><th>测量值</th></tr>
+                  </thead>
+                  <tbody>
+                  {% for r in quality[t.id].records %}
+                    <tr>
+                      <td>{{ r.record_seq }}</td><td>{{ r.line }}</td><td>{{ r.date }}</td>
+                      <td class="mono">{{ r.sample_no }}</td><td class="mono">{{ r.measured_value }}</td>
+                    </tr>
+                  {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          </tr>
+          {% elif d and quality_errors.get(t.id) %}
+          <tr><td colspan="7"><div class="msg">质量库明细查询：{{ quality_errors[t.id] }}</div></td></tr>
+          {% endif %}
+        {% else %}
+          <tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:24px">
+            暂无已发布任务，请先到「采集任务」页完成采集发布
+          </td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const hasPending = {{ 'true' if deliveries.values() | selectattr('status', 'equalto', 'pending') | list else 'false' }};
+    if (hasPending) { setTimeout(() => window.location.reload(), 3000); }
+  </script>
+</body>
+</html>

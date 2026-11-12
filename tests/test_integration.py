@@ -25,17 +25,35 @@ os.environ["BROWSER_CDP_URL"] = ""          # 本地自行 launch
 os.environ["HEADLESS"] = "1"
 os.environ["OPERATION_TIMEOUT_MS"] = "60000"
 
-# 门户与采集服务的包名都叫 app，门户按文件路径显式加载避免撞名。
-_spec = importlib.util.spec_from_file_location(
-    "mock_portal_app", ROOT / "portal" / "app.py"
-)
-portal_module = importlib.util.module_from_spec(_spec)
-sys.modules["mock_portal_app"] = portal_module
-_spec.loader.exec_module(portal_module)
+# 先探测 Flask，再决定是否加载同样依赖 Flask 的门户与采集服务。
+try:
+    import flask  # noqa: F401
+    FLASK_AVAILABLE = True
+except ImportError:
+    FLASK_AVAILABLE = False
+
+if FLASK_AVAILABLE:
+    # 门户与采集服务的包名都叫 app，门户按文件路径显式加载避免撞名。
+    _spec = importlib.util.spec_from_file_location(
+        "mock_portal_app", ROOT / "portal" / "app.py"
+    )
+    portal_module = importlib.util.module_from_spec(_spec)
+    sys.modules["mock_portal_app"] = portal_module
+    _spec.loader.exec_module(portal_module)
+else:  # 容器/装好 Flask 的环境会走完整加载；本机缺库时仅占位以便优雅跳过。
+    portal_module = None
 
 sys.path.insert(0, str(ROOT / "collector"))
-from app import config as collector_config  # noqa: E402
-from app.web import create_app  # noqa: E402
+try:
+    from app import config as collector_config  # noqa: E402
+    from app.web import create_app  # noqa: E402
+    FLASK_AVAILABLE = True
+except ImportError as exc:
+    if "flask" not in str(exc).lower():
+        raise
+    FLASK_AVAILABLE = False
+    collector_config = None
+    create_app = None
 
 try:
     from playwright.sync_api import sync_playwright
@@ -62,7 +80,10 @@ def _wait_http(url, timeout=15):
     raise RuntimeError(f"服务未就绪：{url}")
 
 
-@unittest.skipUnless(PLAYWRIGHT_AVAILABLE, "本机未安装 Playwright")
+@unittest.skipUnless(
+    PLAYWRIGHT_AVAILABLE and FLASK_AVAILABLE,
+    "本机未安装 Playwright 或 Flask（容器内运行）",
+)
 class IntegrationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

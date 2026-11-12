@@ -48,7 +48,9 @@
   <header>
     <h1>质检数据采集服务</h1>
     <p>后台经 Playwright 操作旧仪器门户，单会话串行执行；校验通过后发布到质量库。
-       模拟门户：<a class="ext" style="color:#a7f3d0" href="{{ portal_url }}/" target="_blank">{{ portal_url }}</a></p>
+       模拟门户：<a class="ext" style="color:#a7f3d0" href="{{ portal_url }}/" target="_blank">{{ portal_url }}</a>
+       ｜ <a class="ext" style="color:#a7f3d0" href="/deliveries">质量库投递页 →</a>
+       {% if delivery_count %}（已有 {{ delivery_count }} 条投递）{% endif %}</p>
   </header>
   <main>
     <section class="card">

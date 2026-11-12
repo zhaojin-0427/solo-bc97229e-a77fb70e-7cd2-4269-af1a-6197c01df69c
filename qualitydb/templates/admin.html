@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>本地质量库 · 接收服务</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+           background: #f3f4f6; color: #1f2937; }
+    header { background: #1e3a8a; color: #fff; padding: 16px 32px; }
+    header h1 { margin: 0; font-size: 19px; }
+    header p { margin: 4px 0 0; font-size: 13px; color: #bfdbfe; }
+    main { max-width: 1080px; margin: 26px auto; }
+    .card { background: #fff; border-radius: 10px; padding: 22px 26px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 22px; }
+    h2 { font-size: 16px; margin: 0 0 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 9px 8px; text-align: left;
+             vertical-align: top; }
+    th { background: #f9fafb; font-weight: 600; }
+    .mono { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px;
+             font-size: 12px; }
+    .on { background: #fee2e2; color: #991b1b; }
+    .off { background: #dcfce7; color: #166534; }
+    button { border: 0; border-radius: 6px; padding: 8px 16px; font-size: 13px;
+             cursor: pointer; background: #1d4ed8; color: #fff; }
+    label { font-size: 14px; display: inline-flex; gap: 8px; align-items: center; }
+    .hint { font-size: 12px; color: #6b7280; margin-top: 10px; line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>本地质量库 · 接收服务</h1>
+    <p>接收采集服务投递的检测 CSV：同规则校验 → 明细/回执写入独立 SQLite；
+       同任务同字节回放原回执，异字节拒绝。</p>
+  </header>
+  <main>
+    <section class="card">
+      <h2>演示控制台</h2>
+      <form method="post" action="/admin">
+        <label>
+          <input type="checkbox" name="drop_after_persist" {% if drop %}checked{% endif %}>
+          入库后断开响应（模拟响应丢失：采集端将保持待确认并用原文件重试）
+        </label>
+        <div style="margin-top:14px">
+          <button type="submit">保存开关</button>
+          <span class="badge {{ 'on' if drop else 'off' }}" style="margin-left:12px">
+            当前：{{ '断开模式已开启' if drop else '断开模式已关闭（正常返回回执）' }}
+          </span>
+        </div>
+      </form>
+      <p class="hint">
+        断开模式仅对「新入库」生效；同字节重试始终回放原回执，因此重试不会重复入库。
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>质量库回执（{{ deliveries|length }}）· 每 3 秒自动刷新</h2>
+      <table>
+        <thead>
+          <tr><th>任务号</th><th>回执号</th><th>产线/日期</th><th>记录数</th>
+              <th>文件 SHA-256</th><th>入库时间</th></tr>
+        </thead>
+        <tbody>
+        {% for d in deliveries %}
+          <tr>
+            <td class="mono">{{ d.task_id }}</td>
+            <td class="mono">{{ d.receipt_id[:12] }}</td>
+            <td>{{ d.line }}<div style="color:#6b7280;font-size:12px">{{ d.date }}</div></td>
+            <td>{{ d.record_count }}</td>
+            <td class="mono">{{ d.file_sha256[:16] }}…</td>
+            <td class="mono" style="font-size:12px">{{ d.created_at.replace('T',' ').replace('+00:00',' UTC') }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px">
+            质量库暂无投递
+          </td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script>setTimeout(() => window.location.reload(), 3000);</script>
+</body>
+</html>

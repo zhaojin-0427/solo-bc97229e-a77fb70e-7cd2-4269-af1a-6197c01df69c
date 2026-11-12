@@ -4,15 +4,25 @@ import sys
 import unittest
 from pathlib import Path
 
+try:
+    import flask  # noqa: F401
+    FLASK_AVAILABLE = True
+except ImportError:
+    FLASK_AVAILABLE = False
+
 # 门户与采集服务的包名都叫 app，这里按文件路径显式加载避免 sys.modules 撞名。
 _portal_path = Path(__file__).resolve().parents[1] / "portal" / "app.py"
 _spec = importlib.util.spec_from_file_location("mock_portal_app", _portal_path)
 portal_module = importlib.util.module_from_spec(_spec)
 sys.modules["mock_portal_app"] = portal_module
-_spec.loader.exec_module(portal_module)
 
 
+@unittest.skipUnless(FLASK_AVAILABLE, "本机未安装 Flask，跳过门户测试（容器内运行）")
 class PortalTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        _spec.loader.exec_module(portal_module)
+
     def setUp(self):
         portal_module.app.config["TESTING"] = True
         self.client = portal_module.app.test_client()

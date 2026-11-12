@@ -26,7 +26,25 @@ services:
       retries: 10
       start_period: 5s
 
-  # 采集服务（Flask + Playwright + 单线程 worker）
+  # 本地质量库接收服务：校验 CSV、回执+明细写入独立 SQLite，任务号幂等
+  qualitydb:
+    build:
+      context: .
+      dockerfile: qualitydb/Dockerfile
+    environment:
+      QUALITYDB_DB: /data/quality.db
+      QUALITYDB_DROP_AFTER_PERSIST: "0"
+    ports:
+      - "8100:8100"
+    volumes:
+      - qualitydb-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=2).status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # 采集服务（Flask + Playwright + 单线程 worker + 独立投递 worker）
   collector:
     build: ./collector
     depends_on:
@@ -34,11 +52,14 @@ services:
         condition: service_healthy
       browser:
         condition: service_healthy
+      qualitydb:
+        condition: service_healthy
     environment:
       PORTAL_URL: http://portal:8000
       PORTAL_USERNAME: admin
       PORTAL_PASSWORD: instrument123
       BROWSER_CDP_URL: http://browser:9222
+      QUALITYDB_URL: http://qualitydb:8100
       DATA_DIR: /data
       OPERATION_TIMEOUT_MS: "60000"
     ports:
@@ -53,3 +74,4 @@ services:
 
 volumes:
   collector-data:
+  qualitydb-data:
